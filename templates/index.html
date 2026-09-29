@@ -81,16 +81,16 @@
                     </span>
                 </div>
 
+                <!-- Botão Instalar App (PWA) -->
+                <button id="btn-install-pwa" class="hidden items-center gap-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer">
+                    <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-700"></i>
+                    <span>Instalar App</span>
+                </button>
+
                 <!-- Botão Modal Lançar Nova Medição -->
                 <button onclick="document.getElementById('modal-add-reading').classList.remove('hidden')" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-sm font-bold shadow hover:shadow-md transition-all cursor-pointer">
                     <i data-lucide="plus-circle" class="w-4 h-4"></i>
                     <span>Inserir Dados</span>
-                </button>
-
-                <!-- Botão Atualizar Dados / Simulação -->
-                <button id="btn-refresh" onclick="updateSensors()" class="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-sm font-semibold transition-all shadow hover:shadow-md active:scale-95 cursor-pointer">
-                    <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i>
-                    <span class="hidden sm:inline">Simular Leitura</span>
                 </button>
             </div>
         </div>
@@ -762,38 +762,30 @@
             });
         }
 
-        // Função para simular leitura de sensores e gravar no SQLite via API
-        async function updateSensors() {
-            const currentModEl = document.getElementById('current-mod-id');
-            if (!currentModEl) return;
-            const currentModId = currentModEl.innerText.trim();
-            const btn = document.getElementById('btn-refresh');
-            const icon = document.getElementById('refresh-icon');
+        // Suporte ao botão "Instalar App" (PWA)
+        let deferredPrompt;
+        const installBtn = document.getElementById('btn-install-pwa');
 
-            icon.classList.add('animate-spin');
-            btn.disabled = true;
-
-            try {
-                const response = await fetch('/api/simulate-update', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ module_id: currentModId })
-                });
-
-                const data = await response.json();
-                if (data.success && data.module) {
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 400);
-                }
-            } catch (err) {
-                console.error("Erro ao atualizar dados:", err);
-            } finally {
-                setTimeout(() => {
-                    icon.classList.remove('animate-spin');
-                    btn.disabled = false;
-                }, 300);
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            if (installBtn) {
+                installBtn.classList.remove('hidden');
+                installBtn.classList.add('inline-flex');
             }
+        });
+
+        if (installBtn) {
+            installBtn.addEventListener('click', async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        installBtn.classList.add('hidden');
+                    }
+                    deferredPrompt = null;
+                }
+            });
         }
 
         // Registro do Service Worker PWA para Android e iOS

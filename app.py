@@ -180,44 +180,6 @@ def delete_module(module_id):
     flash(f"Módulo {module_id} e todo seu histórico foram excluídos permanentemente.", "info")
     return redirect(url_for("index"))
 
-@app.route("/api/simulate-update", methods=["POST"])
-def simulate_update():
-    """Simula nova leitura de sensores e salva diretamente no banco."""
-    data = request.get_json(silent=True) or {}
-    module_id = data.get("module_id", "EC-001")
-    
-    modules = database.get_all_modules()
-    if module_id in modules:
-        mod = modules[module_id]
-        delta_temp = round(random.uniform(-0.8, 1.2), 1)
-        delta_hum = random.randint(-2, 3)
-        delta_res = round(random.uniform(0.1, 0.4), 1)
-
-        new_temp = round(max(35.0, min(60.0, mod["temperature"] + delta_temp)), 1)
-        new_hum = max(35, min(90, mod["humidity"] + delta_hum))
-        new_res = round(mod["processed_today"] + delta_res, 1)
-        
-        database.insert_reading(
-            module_id=module_id,
-            residues=new_res,
-            temp=new_temp,
-            humidity=new_hum,
-            date_display=datetime.now().strftime("%d/%m %H:%M")
-        )
-
-    updated_modules = database.get_all_modules()
-    general_status, general_color = get_overall_system_status(updated_modules)
-    total_processed = database.get_total_processed()
-
-    return jsonify({
-        "success": True,
-        "module": updated_modules.get(module_id),
-        "alerts": get_alerts(updated_modules),
-        "general_status": general_status,
-        "general_color": general_color,
-        "total_processed": total_processed
-    })
-
 if __name__ == "__main__":
     print("Iniciando EcoSynk Web Server na porta 5000...")
     app.run(debug=True, host="127.0.0.1", port=5000)
