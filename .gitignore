@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+ecosynk.db
+instance/
+.venv/
+venv/
