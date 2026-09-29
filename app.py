@@ -1,6 +1,6 @@
 import random
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, send_from_directory
 import database
 
 app = Flask(__name__)
@@ -8,6 +8,21 @@ app.secret_key = "ecosynk_secure_session_key_2026"
 
 # Inicializa o banco de dados na primeira execução
 database.init_db()
+
+@app.route("/sw.js")
+def service_worker():
+    """Serve o Service Worker na raiz para escopo PWA global."""
+    return send_from_directory("static", "sw.js", mimetype="application/javascript")
+
+@app.route("/manifest.json")
+def manifest():
+    """Serve o arquivo manifest.json na raiz."""
+    return send_from_directory("static", "manifest.json", mimetype="application/manifest+json")
+
+@app.route("/favicon.ico")
+def favicon():
+    """Serve o favicon padrão na raiz."""
+    return send_from_directory("static", "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
 def get_alerts(modules):
     """Gera lista de alertas ativos do sistema com base nos limites dos módulos."""
@@ -80,7 +95,7 @@ def index():
 
 @app.route("/add-reading", methods=["POST"])
 def add_reading():
-    """Salva nova medição manual no SQLite."""
+    """Salva nova medição manual no banco de dados."""
     module_id = request.form.get("module_id")
     residues = float(request.form.get("residues", 0))
     temperature = float(request.form.get("temperature", 0))
@@ -110,7 +125,7 @@ def edit_reading():
 
 @app.route("/delete-reading/<int:reading_id>", methods=["POST"])
 def delete_reading(reading_id):
-    """Exclui uma leitura específica do histórico no SQLite."""
+    """Exclui uma leitura específica do histórico."""
     module_id = request.form.get("module_id", "EC-001")
     database.delete_reading(reading_id)
     flash("Registro removido com sucesso do banco de dados.", "info")
@@ -118,7 +133,7 @@ def delete_reading(reading_id):
 
 @app.route("/add-module", methods=["POST"])
 def add_module():
-    """Cadastra um novo módulo/recicladora no SQLite."""
+    """Cadastra um novo módulo/recicladora."""
     module_id = request.form.get("module_id", "").strip().upper()
     name = request.form.get("name", "").strip()
     location = request.form.get("location", "").strip()
@@ -167,7 +182,7 @@ def delete_module(module_id):
 
 @app.route("/api/simulate-update", methods=["POST"])
 def simulate_update():
-    """Simula nova leitura de sensores e salva diretamente no SQLite."""
+    """Simula nova leitura de sensores e salva diretamente no banco."""
     data = request.get_json(silent=True) or {}
     module_id = data.get("module_id", "EC-001")
     
@@ -204,5 +219,5 @@ def simulate_update():
     })
 
 if __name__ == "__main__":
-    print("Iniciando EcoSynk Web Server com SQLite na porta 5000...")
+    print("Iniciando EcoSynk Web Server na porta 5000...")
     app.run(debug=True, host="127.0.0.1", port=5000)

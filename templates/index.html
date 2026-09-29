@@ -2,8 +2,27 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>EcoSynk — Sistema de Monitoramento</title>
+
+    <!-- Favicon padrão e resoluções para navegadores -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='icons/favicon-16x16.png') }}">
+
+    <!-- PWA Web App Manifest (Android / Chrome) -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#15803d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="EcoSynk">
+
+    <!-- PWA iOS (Apple Web App / Safari) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="EcoSynk">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js para o gráfico de resíduos -->
@@ -775,6 +794,15 @@
                     btn.disabled = false;
                 }, 300);
             }
+        }
+
+        // Registro do Service Worker PWA para Android e iOS
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('Service Worker PWA registrado com sucesso!', reg.scope))
+                    .catch(err => console.log('Falha ao registrar Service Worker:', err));
+            });
         }
     </script>
 </body>
