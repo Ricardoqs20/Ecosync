@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoSynk — Sistema de Monitoramento</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js para o gráfico de resíduos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                            dark: '#0f391b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="EcoSynk Logo" class="h-10 object-contain rounded-md shadow-sm">
+                <div>
+                    <span class="text-xs uppercase tracking-wider font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
+                        Plataforma de Monitoramento
+                    </span>
+                    <p class="text-xs text-slate-500 hidden sm:block">Gestão Inteligente de Resíduos</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Status Geral -->
+                <div class="hidden sm:flex items-center gap-2 bg-slate-100 px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold">
+                    <span class="text-slate-500">Status Geral:</span>
+                    <span id="header-general-status" class="flex items-center gap-1.5 {% if general_status == 'Normal' %}text-emerald-700{% elif general_status == 'Atenção' %}text-amber-700{% else %}text-rose-700{% endif %}">
+                        <span class="w-2.5 h-2.5 rounded-full {% if general_status == 'Normal' %}bg-emerald-500{% elif general_status == 'Atenção' %}bg-amber-500 animate-pulse{% else %}bg-rose-500 animate-ping{% endif %}"></span>
+                        {{ general_status }}
+                    </span>
+                </div>
+
+                <!-- Botão Modal Lançar Nova Medição -->
+                <button onclick="document.getElementById('modal-add-reading').classList.remove('hidden')" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-sm font-bold shadow hover:shadow-md transition-all cursor-pointer">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                    <span>Inserir Dados</span>
+                </button>
+
+                <!-- Botão Atualizar Dados / Simulação -->
+                <button id="btn-refresh" onclick="updateSensors()" class="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-2 rounded-lg text-sm font-semibold transition-all shadow hover:shadow-md active:scale-95 cursor-pointer">
+                    <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Simular Leitura</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mensagens Flash de Feedback -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 space-y-2">
+            {% for category, message in messages %}
+            <div class="p-3.5 rounded-xl border flex items-center justify-between text-sm font-semibold
+                {% if category == 'success' %}bg-emerald-50 border-emerald-300 text-emerald-900
+                {% elif category == 'danger' %}bg-rose-50 border-rose-300 text-rose-900
+                {% else %}bg-sky-50 border-sky-300 text-sky-900{% endif %}">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="info" class="w-4 h-4"></i>
+                    <span>{{ message }}</span>
+                </div>
+                <button onclick="this.parentElement.remove()" class="text-xs opacity-60 hover:opacity-100 cursor-pointer">✕</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+
+        <!-- Banner Explicativo -->
+        <div class="bg-gradient-to-r from-emerald-950 via-teal-900 to-emerald-900 text-white rounded-2xl p-6 shadow-lg relative overflow-hidden">
+            <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <div class="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-2 border border-emerald-400/30">
+                        <i data-lucide="database" class="w-3.5 h-3.5"></i> Gestão Completa de Recicladoras
+                    </div>
+                    <h1 class="text-xl sm:text-2xl font-black tracking-tight">EcoSynk — Central de Gestão & Monitoramento</h1>
+                    <p class="text-emerald-100/90 text-sm mt-1 max-w-3xl">
+                        Cadastre, renomeie, edite ou exclua qualquer recicladora e suas leituras históricas de forma simples e intuitiva.
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 text-xs bg-black/30 backdrop-blur-sm p-3.5 rounded-xl border border-white/10 shrink-0">
+                    <i data-lucide="sliders" class="w-5 h-5 text-emerald-400"></i>
+                    <div>
+                        <div class="font-bold text-white">Edição & Renomeação</div>
+                        <div class="text-emerald-200/70">Total Controle Operacional</div>
+                    </div>
+                </div>
+            </div>
+            <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl"></div>
+        </div>
+
+        <!-- Seção de Alertas -->
+        <div id="alerts-container" class="space-y-2">
+            {% if alerts %}
+                {% for alert in alerts %}
+                <div class="flex items-center justify-between p-4 rounded-xl border {% if alert.type == 'warning' %}bg-amber-50 border-amber-300 text-amber-900{% elif alert.type == 'danger' %}bg-rose-50 border-rose-300 text-rose-900{% else %}bg-sky-50 border-sky-300 text-sky-900{% endif %} shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <div class="p-1.5 rounded-lg {% if alert.type == 'warning' %}bg-amber-200 text-amber-800{% elif alert.type == 'danger' %}bg-rose-200 text-rose-800{% else %}bg-sky-200 text-sky-800{% endif %}">
+                            <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        </div>
+                        <span class="text-sm font-semibold">⚠️ {{ alert.message }}</span>
+                    </div>
+                    <span class="text-xs px-2.5 py-1 rounded font-mono font-bold bg-white border border-current shadow-xs">
+                        {{ alert.module_id }}
+                    </span>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <!-- Indicadores Globais do Sistema -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- Indicador 1: Total Processado -->
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow transition-shadow">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Processado</span>
+                    <div class="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                        <i data-lucide="scale" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="kpi-total-processed" class="text-3xl font-black text-slate-900">{{ total_processed }}</span>
+                    <span class="text-sm font-semibold text-slate-500">kg</span>
+                </div>
+                <div class="mt-2 text-xs text-emerald-700 flex items-center gap-1 font-medium">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                    <span>Soma de todos os registros</span>
+                </div>
+            </div>
+
+            <!-- Indicador 2: Módulos Ativos -->
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow transition-shadow">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Recicladoras Ativas</span>
+                    <div class="w-9 h-9 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
+                        <i data-lucide="boxes" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span class="text-3xl font-black text-slate-900">{{ active_modules }}</span>
+                    <span class="text-sm font-semibold text-slate-500">unidades</span>
+                </div>
+                <div class="mt-2 text-xs text-slate-500 font-medium">
+                    Módulos instalados na empresa
+                </div>
+            </div>
+
+            <!-- Indicador 3: Status Geral -->
+            <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm hover:shadow transition-shadow">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Status Geral</span>
+                    <div class="w-9 h-9 rounded-lg {% if general_status == 'Normal' %}bg-emerald-50 text-emerald-700{% elif general_status == 'Atenção' %}bg-amber-50 text-amber-700{% else %}bg-rose-50 text-rose-700{% endif %} flex items-center justify-center">
+                        <i data-lucide="activity" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="kpi-general-status" class="text-3xl font-black {% if general_status == 'Normal' %}text-emerald-700{% elif general_status == 'Atenção' %}text-amber-600{% else %}text-rose-600{% endif %}">
+                        {{ general_status }}
+                    </span>
+                </div>
+                <div class="mt-2 text-xs text-slate-500 font-medium">
+                    Diagnóstico contínuo do bioprocesso
+                </div>
+            </div>
+        </div>
+
+        <!-- Seletor de Módulos & Painel de Detalhes -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Coluna da Esquerda: Lista de Módulos -->
+            <div class="lg:col-span-1 space-y-4">
+                <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+                        <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                            <i data-lucide="layout-grid" class="w-4 h-4 text-emerald-700"></i>
+                            Recicladoras / Módulos
+                        </h2>
+                        <button onclick="document.getElementById('modal-add-module').classList.remove('hidden')" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Novo
+                        </button>
+                    </div>
+
+                    <div class="space-y-2.5">
+                        {% for mod_id, mod in modules.items() %}
+                        <div class="rounded-xl border transition-all {% if current_module and mod_id == current_module.id %}bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm{% else %}bg-slate-50/50 hover:bg-slate-100 border-slate-200{% endif %} p-3.5">
+                            <div class="flex items-center justify-between">
+                                <a href="/?module={{ mod_id }}" class="flex items-center gap-2 group flex-1">
+                                    <span class="font-bold text-sm text-slate-900 group-hover:text-emerald-700">{{ mod.id }}</span>
+                                    {% if mod.status == 'Normal' %}
+                                        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                                            🟢 Normal
+                                        </span>
+                                    {% elif mod.status == 'Atenção' %}
+                                        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
+                                            🟡 Atenção
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold">
+                                            🔴 Problema
+                                        </span>
+                                    {% endif %}
+                                </a>
+
+                                <!-- Ações do Módulo (Editar / Excluir) -->
+                                <div class="flex items-center gap-1">
+                                    <button onclick="openEditModule('{{ mod.id }}', '{{ mod.name }}', '{{ mod.location }}', '{{ mod.total_capacity }}')" class="p-1 text-slate-400 hover:text-emerald-700 hover:bg-white rounded transition-colors cursor-pointer" title="Renomear / Editar Módulo">
+                                        <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                    <form method="POST" action="/delete-module/{{ mod.id }}" onsubmit="return confirm('ATENÇÃO: Deseja realmente excluir o módulo {{ mod.id }} e todo seu histórico de dados?');" class="inline">
+                                        <button type="submit" class="p-1 text-slate-400 hover:text-rose-600 hover:bg-white rounded transition-colors cursor-pointer" title="Excluir Módulo">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                            
+                            <a href="/?module={{ mod_id }}" class="block">
+                                <div class="text-xs font-semibold text-slate-700 mt-1">{{ mod.name }}</div>
+                                <div class="text-xs text-slate-500 mt-0.5 flex items-center justify-between">
+                                    <span class="flex items-center gap-1 truncate max-w-[170px]">
+                                        <i data-lucide="map-pin" class="w-3 h-3 text-slate-400 shrink-0"></i>
+                                        {{ mod.location }}
+                                    </span>
+                                    <span class="font-mono text-emerald-800 font-bold shrink-0">{{ mod.processed_today }} kg</span>
+                                </div>
+                            </a>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coluna Direita: Dashboard do Módulo Selecionado -->
+            <div class="lg:col-span-2 space-y-6">
+
+                {% if current_module %}
+                <!-- Cartão Principal do Módulo -->
+                <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-xl font-black text-slate-900" id="mod-title">{{ current_module.name }}</h2>
+                                <span id="mod-badge" class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-bold
+                                    {% if current_module.status == 'Normal' %}bg-emerald-100 text-emerald-800
+                                    {% elif current_module.status == 'Atenção' %}bg-amber-100 text-amber-800
+                                    {% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    {% if current_module.status == 'Normal' %}🟢 Normal
+                                    {% elif current_module.status == 'Atenção' %}🟡 Atenção
+                                    {% else %}🔴 Problema{% endif %}
+                                </span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-slate-400"></i>
+                                <span>Local: <strong class="text-slate-700" id="mod-loc">{{ current_module.location }}</strong></span>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openEditModule('{{ current_module.id }}', '{{ current_module.name }}', '{{ current_module.location }}', '{{ current_module.total_capacity }}')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-1.5 rounded-lg border border-slate-300 flex items-center gap-1 cursor-pointer transition-colors">
+                                <i data-lucide="edit" class="w-3.5 h-3.5"></i> Renomear / Editar
+                            </button>
+                            <button onclick="openAddReadingForCurrent()" class="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold px-3 py-1.5 rounded-lg border border-emerald-200 flex items-center gap-1 cursor-pointer transition-colors">
+                                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Nova Leitura
+                            </button>
+                            <div class="text-xs text-slate-400 bg-slate-100 px-3 py-1.5 rounded-md font-mono">
+                                ID: <span class="text-slate-700 font-bold" id="current-mod-id">{{ current_module.id }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Métricas em Tempo Real do Módulo -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <!-- Resíduos Processados Hoje -->
+                        <div class="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
+                            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Resíduos Processados</span>
+                            <div class="mt-2 flex items-baseline gap-1">
+                                <span class="text-3xl font-black text-slate-900" id="val-residues">{{ current_module.processed_today }}</span>
+                                <span class="text-sm font-semibold text-slate-500">kg</span>
+                            </div>
+                            <span class="text-xs text-slate-400 mt-1 block">Capacidade diária: {{ current_module.total_capacity }} kg</span>
+                        </div>
+
+                        <!-- Temperatura Interna -->
+                        <div class="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
+                            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Temperatura</span>
+                            <div class="mt-2 flex items-baseline gap-1">
+                                <span class="text-3xl font-black {% if current_module.temperature > 50 %}text-amber-600{% else %}text-slate-900{% endif %}" id="val-temp">{{ current_module.temperature }}</span>
+                                <span class="text-sm font-semibold text-slate-500">°C</span>
+                            </div>
+                            <span class="text-xs text-slate-400 mt-1 block">Faixa ideal: 40 °C a 48 °C</span>
+                        </div>
+
+                        <!-- Umidade -->
+                        <div class="bg-slate-50/80 p-4 rounded-xl border border-slate-200/80">
+                            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block">Umidade</span>
+                            <div class="mt-2 flex items-baseline gap-1">
+                                <span class="text-3xl font-black text-slate-900" id="val-humidity">{{ current_module.humidity }}</span>
+                                <span class="text-sm font-semibold text-slate-500">%</span>
+                            </div>
+                            <span class="text-xs text-slate-400 mt-1 block">Faixa ideal: 50% a 65%</span>
+                        </div>
+                    </div>
+
+                    <!-- Gráfico de Resíduos -->
+                    <div class="pt-2">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                                <i data-lucide="bar-chart-2" class="w-4 h-4 text-emerald-700"></i>
+                                Resíduos processados ao longo dos dias
+                            </h3>
+                            <span class="text-xs text-slate-400">kg diários</span>
+                        </div>
+                        <div class="bg-slate-50/60 p-4 rounded-xl border border-slate-200">
+                            <div class="h-56 relative w-full">
+                                <canvas id="residuesChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Histórico em Tabela com Edição e Exclusão -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                            <i data-lucide="history" class="w-4 h-4 text-emerald-700"></i>
+                            Histórico de Medições — {{ current_module.id }}
+                        </h3>
+                        <span class="text-xs text-slate-500 font-mono">Total de leituras: {{ current_module.history|length }}</span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase font-bold border-b border-slate-200">
+                                <tr>
+                                    <th class="px-5 py-3">Data</th>
+                                    <th class="px-5 py-3">Resíduos</th>
+                                    <th class="px-5 py-3">Temperatura</th>
+                                    <th class="px-5 py-3">Umidade</th>
+                                    <th class="px-5 py-3">Status</th>
+                                    <th class="px-5 py-3 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-tbody" class="divide-y divide-slate-100 font-medium">
+                                {% for item in current_module.history %}
+                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                    <td class="px-5 py-3.5 text-slate-900 font-bold font-mono">{{ item.date }}</td>
+                                    <td class="px-5 py-3.5 text-slate-700">{{ item.residues }} kg</td>
+                                    <td class="px-5 py-3.5 text-slate-700">{{ item.temp }} °C</td>
+                                    <td class="px-5 py-3.5 text-slate-700">{{ item.humidity }}%</td>
+                                    <td class="px-5 py-3.5">
+                                        {% if item.status == 'Normal' %}
+                                            <span class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                                                🟢 Normal
+                                            </span>
+                                        {% elif item.status == 'Atenção' %}
+                                            <span class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
+                                                🟡 Atenção
+                                            </span>
+                                        {% else %}
+                                            <span class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold">
+                                                🔴 Problema
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="px-5 py-3.5 text-right space-x-1">
+                                        <!-- Botão Editar Leitura -->
+                                        <button onclick="openEditReading('{{ item.id }}', '{{ current_module.id }}', '{{ item.date }}', '{{ item.residues }}', '{{ item.temp }}', '{{ item.humidity }}')" class="text-xs text-slate-500 hover:text-emerald-700 p-1 hover:bg-emerald-50 rounded transition-colors cursor-pointer" title="Editar leitura">
+                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                        </button>
+                                        <!-- Botão Excluir Leitura -->
+                                        <form method="POST" action="/delete-reading/{{ item.id }}" onsubmit="return confirm('Deseja realmente excluir esta leitura do histórico?');" class="inline">
+                                            <input type="hidden" name="module_id" value="{{ current_module.id }}">
+                                            <button type="submit" class="text-xs text-rose-500 hover:text-rose-700 p-1 hover:bg-rose-50 rounded transition-colors cursor-pointer" title="Excluir leitura">
+                                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% else %}
+                <div class="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500 space-y-3">
+                    <i data-lucide="inbox" class="w-12 h-12 mx-auto text-slate-300"></i>
+                    <p class="text-lg font-bold text-slate-700">Nenhuma recicladora encontrada.</p>
+                    <p class="text-sm">Clique em "+ Novo" para cadastrar sua primeira recicladora.</p>
+                </div>
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Modal: Inserir Nova Medição na Recicladora -->
+    <div id="modal-add-reading" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="plus-circle" class="w-5 h-5 text-emerald-600"></i>
+                    Lançar Dados da Recicladora
+                </h3>
+                <button onclick="document.getElementById('modal-add-reading').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="/add-reading" class="space-y-4 text-sm">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Módulo / Recicladora</label>
+                    <select name="module_id" id="form-module-select" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-800 font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        {% for mod_id, mod in modules.items() %}
+                        <option value="{{ mod_id }}" {% if current_module and mod_id == current_module.id %}selected{% endif %}>
+                            {{ mod.id }} — {{ mod.name }} ({{ mod.location }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Data / Identificação</label>
+                        <input type="text" name="date_display" placeholder="Ex: 19/09 ou Hoje" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Resíduos (kg)</label>
+                        <input type="number" step="0.1" name="residues" placeholder="Ex: 9.5" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Temperatura (°C)</label>
+                        <input type="number" step="0.1" name="temperature" placeholder="Ex: 43.0" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                        <span class="text-[11px] text-slate-400">&gt; 50 °C gera alerta</span>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Umidade (%)</label>
+                        <input type="number" step="1" name="humidity" placeholder="Ex: 55" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                        <span class="text-[11px] text-slate-400">Faixa ideal: 50% a 65%</span>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('modal-add-reading').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 cursor-pointer">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow cursor-pointer">
+                        Salvar Medição
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Editar Medição Existente -->
+    <div id="modal-edit-reading" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="edit-2" class="w-5 h-5 text-emerald-600"></i>
+                    Editar Medição do Histórico
+                </h3>
+                <button onclick="document.getElementById('modal-edit-reading').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="/edit-reading" class="space-y-4 text-sm">
+                <input type="hidden" name="reading_id" id="edit-reading-id">
+                <input type="hidden" name="module_id" id="edit-reading-module-id">
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Data / Identificação</label>
+                        <input type="text" name="date_display" id="edit-reading-date" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Resíduos (kg)</label>
+                        <input type="number" step="0.1" name="residues" id="edit-reading-residues" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Temperatura (°C)</label>
+                        <input type="number" step="0.1" name="temperature" id="edit-reading-temp" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Umidade (%)</label>
+                        <input type="number" step="1" name="humidity" id="edit-reading-humidity" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    </div>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('modal-edit-reading').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 cursor-pointer">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow cursor-pointer">
+                        Atualizar Registro
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Cadastrar Novo Módulo de Recicladora -->
+    <div id="modal-add-module" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="boxes" class="w-5 h-5 text-emerald-600"></i>
+                    Cadastrar Nova Recicladora
+                </h3>
+                <button onclick="document.getElementById('modal-add-module').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="/add-module" class="space-y-4 text-sm">
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Código do Módulo</label>
+                    <input type="text" name="module_id" placeholder="Ex: EC-004" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 uppercase font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Nome de Identificação</label>
+                    <input type="text" name="name" placeholder="Ex: Módulo Refeitório 2" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Local de Instalação</label>
+                    <input type="text" name="location" placeholder="Ex: Galpão de Triagem ou Padaria" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Capacidade Diária (kg)</label>
+                    <input type="number" step="0.5" name="capacity" value="20.0" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('modal-add-module').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 cursor-pointer">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow cursor-pointer">
+                        Cadastrar no Banco
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Renomear e Editar Módulo / Recicladora -->
+    <div id="modal-edit-module" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <i data-lucide="edit-3" class="w-5 h-5 text-emerald-600"></i>
+                    Renomear / Editar Módulo
+                </h3>
+                <button onclick="document.getElementById('modal-edit-module').classList.add('hidden')" class="text-slate-400 hover:text-slate-600 cursor-pointer">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <form method="POST" action="/edit-module" class="space-y-4 text-sm">
+                <input type="hidden" name="old_id" id="edit-mod-old-id">
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Código do Módulo</label>
+                    <input type="text" name="new_id" id="edit-mod-new-id" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 uppercase font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                    <span class="text-[11px] text-slate-400">Renomear o código manterá todo o histórico vinculado.</span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Nome do Módulo</label>
+                    <input type="text" name="name" id="edit-mod-name" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Local de Instalação</label>
+                    <input type="text" name="location" id="edit-mod-location" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Capacidade Diária (kg)</label>
+                    <input type="number" step="0.5" name="capacity" id="edit-mod-capacity" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 focus:outline-none" required>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('modal-edit-module').classList.add('hidden')" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 cursor-pointer">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow cursor-pointer">
+                        Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rodapé -->
+    <footer class="bg-white border-t border-slate-200 mt-12 py-6 text-center text-xs text-slate-500">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="EcoSynk" class="h-6 opacity-80">
+                <span>© 2026 EcoSynk — Sistema do Produto & Gestão de Resíduos Orgânicos.</span>
+            </div>
+            <div class="text-slate-400">
+                Plataforma de Monitoramento Integrado de Compostagem
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts e Inicialização do Gráfico -->
+    <script>
+        lucide.createIcons();
+
+        function openAddReadingForCurrent() {
+            const currentModId = document.getElementById('current-mod-id')?.innerText.trim();
+            const select = document.getElementById('form-module-select');
+            if (select && currentModId) {
+                select.value = currentModId;
+            }
+            document.getElementById('modal-add-reading').classList.remove('hidden');
+        }
+
+        function openEditReading(id, moduleId, date, residues, temp, humidity) {
+            document.getElementById('edit-reading-id').value = id;
+            document.getElementById('edit-reading-module-id').value = moduleId;
+            document.getElementById('edit-reading-date').value = date;
+            document.getElementById('edit-reading-residues').value = residues;
+            document.getElementById('edit-reading-temp').value = temp;
+            document.getElementById('edit-reading-humidity').value = humidity;
+            document.getElementById('modal-edit-reading').classList.remove('hidden');
+        }
+
+        function openEditModule(id, name, location, capacity) {
+            document.getElementById('edit-mod-old-id').value = id;
+            document.getElementById('edit-mod-new-id').value = id;
+            document.getElementById('edit-mod-name').value = name;
+            document.getElementById('edit-mod-location').value = location;
+            document.getElementById('edit-mod-capacity').value = capacity;
+            document.getElementById('modal-edit-module').classList.remove('hidden');
+        }
+
+        // Inicialização do gráfico Chart.js
+        const canvas = document.getElementById('residuesChart');
+        let residuesChart = null;
+
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const chartDates = {{ chart_dates | tojson }};
+            const chartValues = {{ chart_values | tojson }};
+
+            residuesChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartDates,
+                    datasets: [{
+                        label: 'Resíduos Processados (kg)',
+                        data: chartValues,
+                        borderColor: '#15803d',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        pointBackgroundColor: '#15803d',
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            titleFont: { family: 'Plus Jakarta Sans', size: 12 },
+                            bodyFont: { family: 'Plus Jakarta Sans', size: 13 },
+                            padding: 10,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.parsed.y} kg processados`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(226, 232, 240, 0.8)' },
+                            ticks: {
+                                font: { family: 'Plus Jakarta Sans', size: 11 },
+                                callback: function(value) { return value + ' kg'; }
+                            }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { family: 'Plus Jakarta Sans', size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Função para simular leitura de sensores e gravar no SQLite via API
+        async function updateSensors() {
+            const currentModEl = document.getElementById('current-mod-id');
+            if (!currentModEl) return;
+            const currentModId = currentModEl.innerText.trim();
+            const btn = document.getElementById('btn-refresh');
+            const icon = document.getElementById('refresh-icon');
+
+            icon.classList.add('animate-spin');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/simulate-update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ module_id: currentModId })
+                });
+
+                const data = await response.json();
+                if (data.success && data.module) {
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 400);
+                }
+            } catch (err) {
+                console.error("Erro ao atualizar dados:", err);
+            } finally {
+                setTimeout(() => {
+                    icon.classList.remove('animate-spin');
+                    btn.disabled = false;
+                }, 300);
+            }
+        }
+    </script>
+</body>
+</html>
