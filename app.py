@@ -180,6 +180,29 @@ def delete_module(module_id):
     flash(f"Módulo {module_id} e todo seu histórico foram excluídos permanentemente.", "info")
     return redirect(url_for("index"))
 
+@app.route("/api/module/<module_id>")
+def api_module(module_id):
+    """Return JSON data for a specific module (used for AJAX updates)."""
+    modules = database.get_all_modules()
+    if module_id not in modules:
+        return {"error": "Module not found"}, 404
+    mod = modules[module_id]
+    # Prepare chart data in chronological order (oldest to newest)
+    chart_dates = [item["date"] for item in reversed(mod["history"])]
+    chart_values = [item["residues"] for item in reversed(mod["history"])]
+    return {
+        "id": mod["id"],
+        "name": mod["name"],
+        "location": mod["location"],
+        "processed_today": mod["processed_today"],
+        "temperature": mod["temperature"],
+        "humidity": mod["humidity"],
+        "status": mod["status"],
+        "history": mod["history"],
+        "chart_dates": chart_dates,
+        "chart_values": chart_values,
+    }
+
 if __name__ == "__main__":
     print("Iniciando EcoSynk Web Server na porta 5000...")
     app.run(debug=True, host="127.0.0.1", port=5000)

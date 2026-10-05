@@ -113,6 +113,11 @@
                     <span class="sm:hidden">App</span>
                 </button>
 
+                <a href="https://ecosynk-ec001.wilderjesse7.chatgpt.site" target="_blank" class="inline-flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-colors shadow-sm cursor-pointer">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    <span>Ver Modelo 3D</span>
+                </a>
+
                 <!-- Botão Modal Lançar Nova Medição -->
                 <button onclick="document.getElementById('modal-add-reading').classList.remove('hidden')" class="inline-flex items-center gap-1 sm:gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold shadow hover:shadow-md transition-all cursor-pointer">
                     <i data-lucide="plus-circle" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
@@ -392,7 +397,7 @@
                         </div>
                         <div class="bg-slate-50/60 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-700/60">
                             <div class="h-56 relative w-full">
-                                <canvas id="residuesChart"></canvas>
+                                <canvas id="residuesChart" data-dates='{{ chart_dates | tojson }}' data-values='{{ chart_values | tojson }}'></canvas>
                             </div>
                         </div>
                     </div>
@@ -803,14 +808,22 @@
             residuesChart.update();
         }
 
-        // Inicialização do gráfico Chart.js
+        // Inicialização do gráfico Chart.js lendo atributos data-* para evitar conflitos de linter
         const canvas = document.getElementById('residuesChart');
         let residuesChart = null;
 
         if (canvas) {
             const ctx = canvas.getContext('2d');
-            const chartDates = {{ chart_dates | tojson }};
-            const chartValues = {{ chart_values | tojson }};
+            let chartDates = [];
+            let chartValues = [];
+            
+            try {
+                chartDates = JSON.parse(canvas.getAttribute('data-dates') || '[]');
+                chartValues = JSON.parse(canvas.getAttribute('data-values') || '[]');
+            } catch (e) {
+                console.error('Erro ao carregar dados do gráfico', e);
+            }
+
             const isDarkModeInitial = document.documentElement.classList.contains('dark');
             const initialGridColor = isDarkModeInitial ? 'rgba(71, 85, 105, 0.4)' : 'rgba(226, 232, 240, 0.8)';
             const initialTickColor = isDarkModeInitial ? '#94a3b8' : '#64748b';
@@ -845,7 +858,7 @@
                             cornerRadius: 8,
                             callbacks: {
                                 label: function(context) {
-                                    return ` ${context.parsed.y} kg processados`;
+                                    return ' ' + context.parsed.y + ' kg processados';
                                 }
                             }
                         }
@@ -906,6 +919,120 @@
                     .catch(err => console.log('Falha ao registrar Service Worker:', err));
             });
         }
+
+        // Função para carregar módulo via AJAX sem recarregar a página
+        async function loadModule(moduleId) {
+            try {
+                const response = await fetch('/api/module/' + moduleId);
+                if (!response.ok) {
+                    alert('Módulo não encontrado.');
+                    return;
+                }
+                const data = await response.json();
+                
+                // Atualiza título e badge
+                const titleEl = document.getElementById('mod-title');
+                if (titleEl) titleEl.textContent = data.name;
+                
+                const badgeEl = document.getElementById('mod-badge');
+                if (badgeEl) {
+                    badgeEl.textContent = data.status === 'Normal' ? '🟢 Normal' : data.status === 'Atenção' ? '🟡 Atenção' : '🔴 Problema';
+                    const base = 'inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-bold ';
+                    const statusClasses = data.status === 'Normal' ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300' :
+                        data.status === 'Atenção' ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300' :
+                        'bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300';
+                    badgeEl.className = base + statusClasses;
+                }
+                
+                const locEl = document.getElementById('mod-loc');
+                if (locEl) locEl.textContent = data.location;
+                
+                const idEl = document.getElementById('current-mod-id');
+                if (idEl) idEl.textContent = data.id;
+                
+                // Métricas em tempo real
+                const residuesEl = document.getElementById('val-residues');
+                if (residuesEl) residuesEl.textContent = data.processed_today;
+                
+                const tempEl = document.getElementById('val-temp');
+                if (tempEl) {
+                    tempEl.textContent = data.temperature;
+                    tempEl.className = 'text-3xl font-black ' + (data.temperature > 50 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-50');
+                }
+                
+                const humEl = document.getElementById('val-humidity');
+                if (humEl) humEl.textContent = data.humidity;
+                
+                // Atualiza histórico da tabela
+                const tbody = document.getElementById('history-tbody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    data.history.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'hover:bg-slate-50/80 dark:hover:bg-slate-700/40 transition-colors';
+                        
+                        const statusSpan = item.status === 'Normal'
+                            ? '<span class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 font-semibold">🟢 Normal</span>'
+                            : item.status === 'Atenção'
+                            ? '<span class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 font-semibold">🟡 Atenção</span>'
+                            : '<span class="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-800 dark:text-rose-300 font-semibold">🔴 Problema</span>';
+                        
+                        tr.innerHTML = '<td class="px-5 py-3.5 text-slate-900 dark:text-slate-100 font-bold font-mono">' + item.date + '</td>' +
+                            '<td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">' + item.residues + ' kg</td>' +
+                            '<td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">' + item.temp + ' °C</td>' +
+                            '<td class="px-5 py-3.5 text-slate-700 dark:text-slate-300">' + item.humidity + '%</td>' +
+                            '<td class="px-5 py-3.5">' + statusSpan + '</td>' +
+                            '<td class="px-5 py-3.5 text-right space-x-1">' +
+                                '<button onclick="openEditReading(\'' + item.id + '\', \'' + data.id + '\', \'' + item.date + '\', \'' + item.residues + '\', \'' + item.temp + '\', \'' + item.humidity + '\')" class="text-xs text-slate-500 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-400 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded transition-colors cursor-pointer" title="Editar leitura"><i data-lucide="edit-2" class="w-4 h-4"></i></button>' +
+                                '<form method="POST" action="/delete-reading/' + item.id + '" onsubmit="return confirm(\'Deseja realmente excluir esta leitura do histórico?\');" class="inline">' +
+                                    '<input type="hidden" name="module_id" value="' + data.id + '">' +
+                                    '<button type="submit" class="text-xs text-rose-500 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded transition-colors cursor-pointer" title="Excluir leitura"><i data-lucide="trash-2" class="w-4 h-4"></i></button>' +
+                                '</form>' +
+                            '</td>';
+                        tbody.appendChild(tr);
+                    });
+                }
+                
+                // Atualiza gráfico
+                if (window.residuesChart) {
+                    residuesChart.data.labels = data.chart_dates;
+                    residuesChart.data.datasets[0].data = data.chart_values;
+                    residuesChart.update();
+                }
+                
+                // Atualiza URL sem recarregar
+                window.history.pushState(null, '', '?module=' + moduleId);
+                
+                // Reseta todos os cartões para o estado padrão inativo
+                document.querySelectorAll('.rounded-xl.border').forEach(div => {
+                    div.className = "rounded-xl border transition-all bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-700/40 border-slate-200 dark:border-slate-700/60 p-3.5";
+                });
+
+                // Destaca apenas o card selecionado com o contorno verde
+                const selectedDiv = document.querySelector('a[href="/?module=' + moduleId + '"]')?.closest('div.rounded-xl');
+                if (selectedDiv) {
+                    selectedDiv.className = "rounded-xl border transition-all bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm p-3.5";
+                }
+
+                lucide.createIcons();
+
+            } catch (err) {
+                console.error(err);
+                alert('Erro ao carregar módulo.');
+            }
+        }
+
+        // Intercepta cliques nos links de módulo para usar AJAX
+        document.querySelectorAll('a[href^="/?module="]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const url = new URL(a.href, location.origin);
+                const moduleId = url.searchParams.get('module');
+                if (moduleId) {
+                    loadModule(moduleId);
+                }
+            });
+        });
     </script>
 </body>
 </html>

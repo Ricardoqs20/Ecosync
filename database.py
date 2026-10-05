@@ -118,6 +118,18 @@ def get_all_modules():
             }
             for r in readings_rows
         ]
+        # Ordena histórico cronologicamente (mais antigo primeiro)
+        from datetime import datetime as _dt
+        # Helper to parse dates that may include a time component (e.g., "18/09 14:54")
+        def _parse_date(date_str: str) -> _dt:
+            for fmt in ("%d/%m %H:%M", "%d/%m"):
+                try:
+                    return _dt.strptime(date_str, fmt)
+                except ValueError:
+                    continue
+            # If parsing fails, return a minimal datetime to keep ordering stable
+            return _dt.min
+        history.sort(key=lambda x: _parse_date(x["date"]))
 
         if history:
             current = history[0]
